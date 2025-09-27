@@ -1,73 +1,3 @@
-# import asyncio
-# from aiogram import Bot, Dispatcher, types
-# from aiogram.filters import Command
-# from aiogram.fsm.context import FSMContext
-# from aiogram.fsm.state import State, StatesGroup
-# from aiogram.fsm.storage.memory import MemoryStorage
-# import requests
-
-
-# API_TOKEN = "8270550557:AAEu_-4P1SAbpBOqfZ_7FGTXaPQ3J7nAzho"
-
-# # Создаем бота и диспетчер с хранилищем состояний
-# bot = Bot(token=API_TOKEN)
-# dp = Dispatcher(storage=MemoryStorage())
-
-
-# # Определяем состояния
-# class AuthForm(StatesGroup):
-#     login = State()
-#     password = State()
-#     captcha_code = State()
-
-
-# # # Хендлер команды /start
-# # @dp.message(Command("start"))
-# # async def cmd_start(message: types.Message, state: FSMContext):
-# #     await state.set_state(Form.name)
-# #     await message.answer("Привет! Как тебя зовут?")
-
-# # Хендлер команды /start
-# @dp.message(Command("start"))
-# async def cmd_start(message: types.Message, state: FSMContext):
-#     await state.set_state(AuthForm.login)
-#     await message.answer("Привет! Для авторизации введи логин")
-
-# # Хендлер для имени
-# @dp.message(AuthForm.login)
-# async def process_name(message: types.Message, state: FSMContext):
-#     await state.update_data(login=message.text)
-#     await state.set_state(AuthForm.password)
-#     await message.answer("Пароль:")
-
-# @dp.message(AuthForm.password)
-# async def process_name(message: types.Message, state: FSMContext):
-#     session = requests.Session()
-
-# # # Хендлер для имени
-# # @dp.message(Form.name)
-# # async def process_name(message: types.Message, state: FSMContext):
-# #     await state.update_data(name=message.text)
-# #     await state.set_state(Form.age)
-# #     await message.answer("Сколько тебе лет?")
-
-
-# # # Хендлер для возраста
-# # @dp.message(Form.age)
-# # async def process_age(message: types.Message, state: FSMContext):
-# #     data = await state.get_data()
-# #     await message.answer(f"Тебя зовут {data['name']}, тебе {message.text} лет.")
-# #     await state.clear()
-
-
-# # Точка входа
-# async def main():
-#     await dp.start_polling(bot)
-
-
-# if __name__ == "__main__":
-#     asyncio.run(main())
-
 import asyncio
 import re
 import os
@@ -124,14 +54,13 @@ async def login_cmd(message: Message, state: FSMContext):
     # сохраняем токен и куки в FSM
     await state.update_data(
         cookies=session.cookies.get_dict(),
-        token=token
+        token=token,
+        captcha_filepath=filepath
     )
 
     await message.answer("Введите логин:")
     await state.set_state(AuthForm.login)
 
-    # отправляем капчу
-    await message.answer_photo(FSInputFile(filepath), caption="Введите код с картинки:")
 
 # логин
 @router.message(AuthForm.login)
@@ -144,7 +73,10 @@ async def process_login(message: Message, state: FSMContext):
 @router.message(AuthForm.password)
 async def process_password(message: Message, state: FSMContext):
     await state.update_data(password=message.text)
-    await message.answer("Введите капчу:")
+    data = await state.get_data()
+    captcha_filepath = data.get("captcha_filepath")
+    if captcha_filepath:
+        await message.answer_photo(FSInputFile(captcha_filepath), caption="Введите капчу:")
     await state.set_state(AuthForm.captcha_code)
 
 # капча
@@ -183,7 +115,7 @@ async def process_captcha(message: Message, state: FSMContext):
     await state.update_data(cookies=session.cookies.get_dict(), ecampus_id=model_id)
 
     await message.answer(f"Вход выполнен ✅ Id={model_id}")
-    print(session.cookies.get_dict())
+    
     await state.set_state(None)
 
 
@@ -194,6 +126,10 @@ def get_monday_date():
     # Если сегодня после понедельника — используем этот понедельник
     # Если нужно всегда следующий понедельник — добавь timedelta(days=7)
     return monday.strftime("%Y-%m-%dT00:00:00.000Z")
+
+@router.message(Command("help"))
+async def get_schedule(message: Message, state: FSMContext):
+    await message.answer("""/login - авторизация,\n/schedule - расписание на эту недулю,\n/grades - оценки и Н-ки""")
 
 # расписание
 @router.message(Command("schedule"))
@@ -259,10 +195,107 @@ async def get_schedule(message: Message, state: FSMContext):
     for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
         await message.answer(chunk)
 
+@router.message(Command("grades"))
+async def get_grades(message: Message, state: FSMContext):
+    data = await state.get_data()
+    cookies = data.get("cookies")
+    model_id = data.get("ecampus_id")
+
+    # Проверка наличия необходимых данных
+    if not model_id or not cookies:
+        await message.answer("Пожалуйста, выполните вход в систему с помощью команды /login.")
+        return
+
+    # Запрос на получение информации о курсах
+    resp = requests.get("https://ecampus.ncfu.ru/studies", cookies=cookies)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    script = soup.find("script", type="text/javascript", string=re.compile("viewModel"))
+    courses = []
+    if script:
+        text = script.string
+        match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text, re.S)
+        if match:
+            json_text = match.group(1)
+            json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
+            data_json = json.loads(json_text)
+            courses = data_json.get("specialities", [])
+    
+    # Для каждого курса получаем оценки
+    print(courses)
+    
+    model_id = resp.text
+    last = model_id.rfind('"Id"') +5
+    model_id = model_id[last:]
+    first = model_id.find(',')
+    model_id = int(model_id[:first])
+    
+    all_grades = []
+    total_n = 0  # Суммарное количество Н для всех курсов
+    for course in courses:
+        for year in course.get("AcademicYears", []):
+            for term in year.get("Terms", []):
+                if term.get("IsCurrent", False):  # Только актуальные термины
+                    courses_in_term = term.get("Courses", [])
+                    if courses_in_term:  # Проверяем, что список не пуст
+                        for course_item in courses_in_term:
+                            lesson_types = course_item.get("LessonTypes", [])
+                            if lesson_types:
+                                lesson_counts = {"Лекция": 0, "Практическое занятие": 0}
+                                total_score = 0
+                                total_attendance = 0
+                                total_lessons = 0
+                                n_count = 0  # Количество Н для текущего предмета
+
+                                for lesson in lesson_types:
+                                    lesson_id = lesson.get("Id")
+                                    lesson_name = lesson.get("Name")
+                                    
+                                    payload = {
+                                        "studentId": model_id,
+                                        "lessonTypeId": lesson_id
+                                    }
+                                    grades_resp = requests.post(
+                                        "https://ecampus.ncfu.ru/studies/GetLessons", cookies=cookies, data=payload)
+                                    
+                                    if grades_resp.status_code == 200:
+                                        grades = grades_resp.json()
+                                        for grade_info in grades:
+                                            # Вычисление по каждому занятию
+                                            attendance = grade_info.get("Attendance")
+                                            grade_text = grade_info.get("GradeText")
+                                            if attendance == 1:
+                                                total_attendance += 1
+                                            if attendance == 0:
+                                                n_count += 1  # Увеличиваем количество "Н"
+                                            if grade_text:
+                                                total_score += {"отлично": 5, "хорошо": 4, "удовлетворительно": 3}.get(grade_text, 0)
+                                                total_lessons += 1
+                                
+                                # Подсчитываем средний балл для курса
+                                average_score = total_score / total_lessons if total_lessons > 0 else 0
+                                
+                                # Формируем ответ для каждого курса
+                                response = f"Название предмета: {course_item.get('Name')}\n"
+                                response += f"Н: {n_count} (Количество Н)\n"
+                                response += f"Средний балл: {average_score:.2f}"
+                                all_grades.append(response)
+                                total_n += n_count  # Добавляем количество Н для текущего предмета в общий счетчик
+
+    # Формируем итоговый ответ
+    if all_grades:
+        response = "\n\n".join(all_grades)
+        response += f"\n\nОбщее количество Н по всем предметам: {total_n}"
+        await message.answer(response)
+    else:
+        await message.answer("Не удалось получить данные о ваших оценках.")
+        
 dp.include_router(router)
+
 
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
