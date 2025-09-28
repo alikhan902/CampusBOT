@@ -179,14 +179,19 @@ async def get_schedule(message: Message, state: FSMContext):
             lesson_type = lesson.get("LessonType")
             time_begin = lesson.get("TimeBegin")[11:16]
             time_end = lesson.get("TimeEnd")[11:16]
-            teacher = lesson.get("Teacher", {}).get("Name", "Неизвестно")
+            if isinstance(lesson, dict):
+                teacher_name = lesson.get("Teacher", {}).get("Name", "Неизвестно")
+            else:
+                teacher_name = "Неизвестно"
+            print(lesson)
+            print(teacher_name)
             aud = lesson.get("Aud", {}).get("Name", "—")
             group = ", ".join(g["Name"] for g in lesson.get("Groups", []))
 
             text += (
                 f"⏰ {time_begin}–{time_end}\n"
                 f"📖 {discipline} ({lesson_type})\n"
-                f"👨‍🏫 {teacher}\n"
+                f"👨‍🏫 {teacher_name}\n"
                 f"🏫 Аудитория: {aud}\n"
                 f"👥 Группа: {group}\n\n"
             )
