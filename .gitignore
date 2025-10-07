@@ -1,0 +1,45 @@
+# Виртуальное окружение
+.venv/
+venv/
+
+# IDE и редакторы
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Кэш и временные файлы
+*.log
+*.tmp
+*.swp
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Графики и результаты экспериментов
+*.jpg
+*.jpeg
+*.svg
+
+# Бинарные данные
+*.exe
+*.dll
+*.so
+
+# Данные, которые могут быть сгенерированы
+*.csv
+*.tsv
+*.dat
+*.out
+
+# Конфиг файлы
+.env

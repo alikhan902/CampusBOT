@@ -1,9 +1,11 @@
+import os
 import asyncio
 import re
 import os
 import uuid
 import json
 import requests
+from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -13,9 +15,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 from datetime import datetime, timedelta
 
-API_TOKEN = "8270550557:AAEu_-4P1SAbpBOqfZ_7FGTXaPQ3J7nAzho"
+load_dotenv()
 
-bot = Bot(token=API_TOKEN)
+TOKEN = os.getenv("BOT_TOKEN")
+
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 router = Router()
 
@@ -24,6 +28,12 @@ class AuthForm(StatesGroup):
     login = State()
     password = State()
     captcha_code = State()
+    
+# /start
+@router.message(Command("start"))
+async def start_cmd(message: Message, state: FSMContext):
+    await login_cmd(message, state)
+
 
 # /login
 @router.message(F.text == "/login")
@@ -121,10 +131,7 @@ async def process_captcha(message: Message, state: FSMContext):
 
 def get_monday_date():
     today = datetime.today()
-    # Определяем понедельник текущей недели
     monday = today - timedelta(days=today.weekday())
-    # Если сегодня после понедельника — используем этот понедельник
-    # Если нужно всегда следующий понедельник — добавь timedelta(days=7)
     return monday.strftime("%Y-%m-%dT00:00:00.000Z")
 
 @router.message(Command("help"))
@@ -224,8 +231,7 @@ async def get_grades(message: Message, state: FSMContext):
             json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
             data_json = json.loads(json_text)
             courses = data_json.get("specialities", [])
-    
-    # Для каждого курса получаем оценки
+
     print(courses)
     
     model_id = resp.text
@@ -239,9 +245,9 @@ async def get_grades(message: Message, state: FSMContext):
     for course in courses:
         for year in course.get("AcademicYears", []):
             for term in year.get("Terms", []):
-                if term.get("IsCurrent", False):  # Только актуальные термины
+                if term.get("IsCurrent", False): 
                     courses_in_term = term.get("Courses", [])
-                    if courses_in_term:  # Проверяем, что список не пуст
+                    if courses_in_term:  
                         for course_item in courses_in_term:
                             lesson_types = course_item.get("LessonTypes", [])
                             if lesson_types:
@@ -276,7 +282,7 @@ async def get_grades(message: Message, state: FSMContext):
                                                 total_score += {"отлично": 5, "хорошо": 4, "удовлетворительно": 3}.get(grade_text, 0)
                                                 total_lessons += 1
                                 
-                                # Подсчитываем средний балл для курса
+                                # средний балл для курса
                                 average_score = total_score / total_lessons if total_lessons > 0 else 0
                                 
                                 # Формируем ответ для каждого курса
