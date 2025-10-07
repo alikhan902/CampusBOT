@@ -1,3 +1,4 @@
+import time
 import os
 import asyncio
 import re
@@ -5,6 +6,7 @@ import os
 import uuid
 import json
 import requests
+import aiohttp
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -13,7 +15,8 @@ from aiogram.types import Message, FSInputFile
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
-from datetime import datetime, timedelta
+
+from utils import get_monday_date
 
 load_dotenv()
 
@@ -129,11 +132,6 @@ async def process_captcha(message: Message, state: FSMContext):
     await state.set_state(None)
 
 
-def get_monday_date():
-    today = datetime.today()
-    monday = today - timedelta(days=today.weekday())
-    return monday.strftime("%Y-%m-%dT00:00:00.000Z")
-
 @router.message(Command("help"))
 async def get_schedule(message: Message, state: FSMContext):
     await message.answer("""/login - авторизация,\n/schedule - расписание на эту недулю,\n/grades - оценки и Н-ки""")
@@ -145,7 +143,7 @@ async def get_schedule(message: Message, state: FSMContext):
     cookies = data.get("cookies")
     model_id = data.get("ecampus_id")
 
-    monday_date = get_monday_date()  # функция из прошлого ответа
+    monday_date = get_monday_date() 
 
     payload = {
         "Id": model_id,
@@ -209,90 +207,102 @@ async def get_schedule(message: Message, state: FSMContext):
 
 @router.message(Command("grades"))
 async def get_grades(message: Message, state: FSMContext):
+    start_time = time.perf_counter()
     data = await state.get_data()
     cookies = data.get("cookies")
     model_id = data.get("ecampus_id")
 
-    # Проверка наличия необходимых данных
     if not model_id or not cookies:
         await message.answer("Пожалуйста, выполните вход в систему с помощью команды /login.")
         return
 
-    # Запрос на получение информации о курсах
-    resp = requests.get("https://ecampus.ncfu.ru/studies", cookies=cookies)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    script = soup.find("script", type="text/javascript", string=re.compile("viewModel"))
-    courses = []
-    if script:
-        text = script.string
-        match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text, re.S)
-        if match:
-            json_text = match.group(1)
-            json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
-            data_json = json.loads(json_text)
-            courses = data_json.get("specialities", [])
+    async with aiohttp.ClientSession(cookies=cookies, connector=aiohttp.TCPConnector(limit=5, limit_per_host=3)) as session:
+        # --- Получаем страницу с курсами ---
+        async with session.get("https://ecampus.ncfu.ru/studies") as resp:
+            text = await resp.text()
 
-    print(courses)
-    
-    model_id = resp.text
-    last = model_id.rfind('"Id"') +5
-    model_id = model_id[last:]
-    first = model_id.find(',')
-    model_id = int(model_id[:first])
-    
-    all_grades = []
-    total_n = 0  # Суммарное количество Н для всех курсов
-    for course in courses:
-        for year in course.get("AcademicYears", []):
-            for term in year.get("Terms", []):
-                if term.get("IsCurrent", False): 
-                    courses_in_term = term.get("Courses", [])
-                    if courses_in_term:  
-                        for course_item in courses_in_term:
+        soup = BeautifulSoup(text, "html.parser")
+        script = soup.find("script", type="text/javascript", string=re.compile("viewModel"))
+        courses = []
+
+        if script:
+            text_script = script.string
+            match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text_script, re.S)
+            if match:
+                json_text = match.group(1)
+                json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
+                data_json = json.loads(json_text)
+                courses = data_json.get("specialities", [])
+
+        # --- Извлекаем model_id из HTML ---
+        model_text = text
+        last = model_text.rfind('"Id"') + 5
+        model_text = model_text[last:]
+        first = model_text.find(',')
+        model_id = int(model_text[:first])
+
+        all_grades = []
+        total_n = 0
+
+        # --- Обработка курсов ---
+        for course in courses:
+            for year in course.get("AcademicYears", []):
+                for term in year.get("Terms", []):
+                    if term.get("IsCurrent", False):
+                        for course_item in term.get("Courses", []):
                             lesson_types = course_item.get("LessonTypes", [])
-                            if lesson_types:
-                                lesson_counts = {"Лекция": 0, "Практическое занятие": 0}
-                                total_score = 0
-                                total_attendance = 0
-                                total_lessons = 0
-                                n_count = 0  # Количество Н для текущего предмета
+                            if not lesson_types:
+                                continue
 
-                                for lesson in lesson_types:
-                                    lesson_id = lesson.get("Id")
-                                    lesson_name = lesson.get("Name")
-                                    
-                                    payload = {
-                                        "studentId": model_id,
-                                        "lessonTypeId": lesson_id
-                                    }
-                                    grades_resp = requests.post(
-                                        "https://ecampus.ncfu.ru/studies/GetLessons", cookies=cookies, data=payload)
-                                    
-                                    if grades_resp.status_code == 200:
-                                        grades = grades_resp.json()
+                            total_score = 0
+                            total_attendance = 0
+                            total_lessons = 0
+                            n_count = 0
+
+                            for lesson in lesson_types:
+                                lesson_id = lesson.get("Id")
+
+                                payload = {
+                                    "studentId": model_id,
+                                    "lessonTypeId": lesson_id
+                                }
+
+                                async with session.post(
+                                    "https://ecampus.ncfu.ru/studies/GetLessons", data=payload
+                                ) as grades_resp:
+                                    print(resp.status)
+                                    if grades_resp.status == 200:
+                                        grades = await grades_resp.json()
                                         for grade_info in grades:
-                                            # Вычисление по каждому занятию
                                             attendance = grade_info.get("Attendance")
                                             grade_text = grade_info.get("GradeText")
+
                                             if attendance == 1:
                                                 total_attendance += 1
-                                            if attendance == 0:
-                                                n_count += 1  # Увеличиваем количество "Н"
-                                            if grade_text:
-                                                total_score += {"отлично": 5, "хорошо": 4, "удовлетворительно": 3}.get(grade_text, 0)
-                                                total_lessons += 1
-                                
-                                # средний балл для курса
-                                average_score = total_score / total_lessons if total_lessons > 0 else 0
-                                
-                                # Формируем ответ для каждого курса
-                                response = f"Название предмета: {course_item.get('Name')}\n"
-                                response += f"Н: {n_count} (Количество Н)\n"
-                                response += f"Средний балл: {average_score:.2f}"
-                                all_grades.append(response)
-                                total_n += n_count  # Добавляем количество Н для текущего предмета в общий счетчик
+                                            elif attendance == 0:
+                                                n_count += 1
 
-    # Формируем итоговый ответ
+                                            if grade_text:
+                                                total_score += {
+                                                    "отлично": 5,
+                                                    "хорошо": 4,
+                                                    "удовлетворительно": 3
+                                                }.get(grade_text, 0)
+                                                total_lessons += 1
+
+                            average_score = total_score / total_lessons if total_lessons > 0 else 0
+                            response = (
+                                f"Название предмета: {course_item.get('Name')}\n"
+                                f"Н: {n_count}\n"
+                                f"Средний балл: {average_score:.2f}"
+                            )
+                            all_grades.append(response)
+                            total_n += n_count
+
+    end_time = time.perf_counter()
+    elapsed = end_time - start_time 
+    print(f"Время {elapsed}")
+    # --- Ответ пользователю ---
     if all_grades:
         response = "\n\n".join(all_grades)
         response += f"\n\nОбщее количество Н по всем предметам: {total_n}"
