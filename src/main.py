@@ -274,11 +274,15 @@ async def get_grades(message: Message, state: FSMContext):
                                     "studentId": model_id,
                                     "lessonTypeId": lesson_id
                                 }
-
+                                start_time_lesson = time.perf_counter()
                                 async with session.post(
                                     "https://ecampus.ncfu.ru/studies/GetLessons", data=payload
                                 ) as grades_resp:
+                                    end_time_lesson = time.perf_counter()
+                                    elapsed_lesson = end_time_lesson - start_time_lesson 
+                                    print(f"Время лессон запроса {elapsed_lesson}")
                                     print(resp.status)
+                                    await asyncio.sleep(1)
                                     if grades_resp.status == 200:
                                         grades = await grades_resp.json()
                                         for grade_info in grades:
