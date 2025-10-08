@@ -114,16 +114,21 @@ async def process_captcha(message: Message, state: FSMContext):
     get_id = session.get("https://ecampus.ncfu.ru/schedule/my/student")
     soup2 = BeautifulSoup(get_id.text, "html.parser")
     script = soup2.find("script", type="text/javascript", string=re.compile("viewModel"))
+    print("остановка тут 0")
 
     model_id = None
     if script:
         text = script.string
         match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text, re.S)
+        print("остановка тут 1")
         if match:
+            print(match)
             json_text = match.group(1)
             json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
             data_json = json.loads(json_text)
+            print(data_json)
             model_id = data_json["Model"]["Id"]
+            print("остановка тут 2")
 
     await state.update_data(cookies=session.cookies.get_dict(), ecampus_id=model_id)
 
@@ -185,7 +190,11 @@ async def get_schedule(message: Message, state: FSMContext):
             time_begin = lesson.get("TimeBegin")[11:16]
             time_end = lesson.get("TimeEnd")[11:16]
             if isinstance(lesson, dict):
-                teacher_name = lesson.get("Teacher", {}).get("Name", "Неизвестно")
+                teacher = lesson.get("Teacher")
+                if isinstance(teacher, dict):
+                    teacher_name = teacher.get("Name", "Неизвестно")
+                else:
+                    teacher_name = "Неизвестно"
             else:
                 teacher_name = "Неизвестно"
             print(lesson)
@@ -201,7 +210,6 @@ async def get_schedule(message: Message, state: FSMContext):
                 f"👥 Группа: {group}\n\n"
             )
 
-    # Telegram ограничивает сообщения 4096 символами
     for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
         await message.answer(chunk)
 
