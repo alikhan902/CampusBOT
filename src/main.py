@@ -16,7 +16,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 
-from utils import get_monday_date
+from utils import get_monday_date, post_lesson
 
 load_dotenv()
 
@@ -127,12 +127,17 @@ async def process_captcha(message: Message, state: FSMContext):
             json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
             data_json = json.loads(json_text)
             print(data_json)
-            model_id = data_json["Model"]["Id"]
+            try:
+                model_id = data_json["Model"]["Id"]
+            except (KeyError, TypeError):
+                model_id = None
             print("остановка тут 2")
 
     await state.update_data(cookies=session.cookies.get_dict(), ecampus_id=model_id)
-
-    await message.answer(f"Вход выполнен ✅ Id={model_id}")
+    if model_id != None:
+        await message.answer(f"Вход выполнен ✅")
+    else:
+        await message.answer(f"Авторизация не удалась ❌ \nВозможно вы ввели неверные данны, попробуйте снова")
     
     await state.set_state(None)
 
@@ -213,6 +218,9 @@ async def get_schedule(message: Message, state: FSMContext):
     for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
         await message.answer(chunk)
 
+
+
+
 @router.message(Command("grades"))
 async def get_grades(message: Message, state: FSMContext):
     start_time = time.perf_counter()
@@ -223,8 +231,9 @@ async def get_grades(message: Message, state: FSMContext):
     if not model_id or not cookies:
         await message.answer("Пожалуйста, выполните вход в систему с помощью команды /login.")
         return
-
-    async with aiohttp.ClientSession(cookies=cookies, connector=aiohttp.TCPConnector(limit=5, limit_per_host=3)) as session:
+    timeout = aiohttp.ClientTimeout(total=3)
+    
+    async with aiohttp.ClientSession(cookies=cookies, connector=aiohttp.TCPConnector(limit=5, limit_per_host=3), timeout=timeout) as session:
         # --- Получаем страницу с курсами ---
         async with session.get("https://ecampus.ncfu.ru/studies") as resp:
             text = await resp.text()
@@ -275,32 +284,25 @@ async def get_grades(message: Message, state: FSMContext):
                                     "lessonTypeId": lesson_id
                                 }
                                 start_time_lesson = time.perf_counter()
-                                async with session.post(
-                                    "https://ecampus.ncfu.ru/studies/GetLessons", data=payload
-                                ) as grades_resp:
-                                    end_time_lesson = time.perf_counter()
-                                    elapsed_lesson = end_time_lesson - start_time_lesson 
-                                    print(f"Время лессон запроса {elapsed_lesson}")
-                                    print(resp.status)
-                                    await asyncio.sleep(1)
-                                    if grades_resp.status == 200:
-                                        grades = await grades_resp.json()
-                                        for grade_info in grades:
-                                            attendance = grade_info.get("Attendance")
-                                            grade_text = grade_info.get("GradeText")
+                                grades, success = await post_lesson(session=session, payload=payload, start_time_lesson=start_time_lesson)
+                                
+                                if success and grades:
+                                    for grade_info in grades:
+                                        attendance = grade_info.get("Attendance")
+                                        grade_text = grade_info.get("GradeText")
 
-                                            if attendance == 1:
-                                                total_attendance += 1
-                                            elif attendance == 0:
-                                                n_count += 1
+                                        if attendance == 1:
+                                            total_attendance += 1
+                                        elif attendance == 0:
+                                            n_count += 1
 
-                                            if grade_text:
-                                                total_score += {
-                                                    "отлично": 5,
-                                                    "хорошо": 4,
-                                                    "удовлетворительно": 3
-                                                }.get(grade_text, 0)
-                                                total_lessons += 1
+                                        if grade_text:
+                                            total_score += {
+                                                "отлично": 5,
+                                                "хорошо": 4,
+                                                "удовлетворительно": 3
+                                            }.get(grade_text, 0)
+                                            total_lessons += 1
 
                             average_score = total_score / total_lessons if total_lessons > 0 else 0
                             response = (
