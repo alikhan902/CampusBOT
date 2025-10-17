@@ -1,13 +1,6 @@
-from datetime import datetime, timedelta
-import aiohttp
+
 import asyncio
 import time
-
-def get_monday_date():
-    today = datetime.today()
-    monday = today - timedelta(days=today.weekday())
-    return monday.strftime("%Y-%m-%dT00:00:00.000Z")
-
 
 async def post_lesson(session, payload, start_time_lesson):
     try:
