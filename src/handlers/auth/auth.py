@@ -1,7 +1,9 @@
+import asyncio
 import os
 import uuid
 import re
 import json
+import aiofiles
 from bs4 import BeautifulSoup
 from aiogram import Router, F
 from aiogram.types import Message, FSInputFile
@@ -15,6 +17,8 @@ router = Router()
 async def login_cmd(message: Message, state: FSMContext,session):
     login_url = "https://ecampus.ncfu.ru/account/login"
 
+    await state.clear() 
+    session.cookie_jar.clear()
 
     async with session.get(login_url) as resp:
         text = await resp.text()
@@ -36,10 +40,9 @@ async def login_cmd(message: Message, state: FSMContext,session):
 
     async with session.get(captcha_url) as captcha_resp:
         content = await captcha_resp.read()
-        with open(filepath, "wb") as f:
-            f.write(content)
+        async with aiofiles.open(filepath, "wb") as f:
+            await f.write(content)
 
-    # сохраняем токен и куки
     cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
     await state.update_data(
         cookies=cookies,
@@ -65,13 +68,13 @@ async def process_password(message: Message, state: FSMContext):
     captcha_filepath = data.get("captcha_filepath")
     if captcha_filepath:
         await message.answer_photo(FSInputFile(captcha_filepath), caption="Введите капчу:")
+        await asyncio.to_thread(os.remove, captcha_filepath)
     await state.set_state(AuthForm.captcha_code)
 
 # капча
 @router.message(AuthForm.captcha_code)
 async def process_captcha(message: Message, state: FSMContext, session):
     data = await state.get_data()
-    cookies = data["cookies"]
     token = data["token"]
 
 

@@ -15,7 +15,6 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Всю настройку выносим сюда
 dp.include_router(help.router)
 dp.include_router(start.router)
 dp.include_router(auth.router)

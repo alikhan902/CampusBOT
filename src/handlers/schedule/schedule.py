@@ -11,7 +11,6 @@ router = Router()
 @router.message(Command("schedule"))
 async def get_schedule(message: Message, state: FSMContext, session):
     data = await state.get_data()
-    cookies = data.get("cookies")
     model_id = data.get("ecampus_id")
 
     monday_date = get_monday_date()
