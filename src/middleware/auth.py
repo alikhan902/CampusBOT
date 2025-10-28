@@ -2,7 +2,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-ALLOWED_COMMANDS = {"/start", "/login", "/help"}
+ALLOWED_COMMANDS = {"/start", "/login", "/help", "/locsh"}
 
 class AuthMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: Message, data):

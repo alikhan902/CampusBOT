@@ -9,11 +9,12 @@ from aiogram import Router, F
 from aiogram.types import Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from states.states import AuthForm
+from aiogram.filters import Command
 
 router = Router()
 
 # /login
-@router.message(F.text == "/login")
+@router.message(Command("login"))
 async def login_cmd(message: Message, state: FSMContext,session):
     login_url = "https://ecampus.ncfu.ru/account/login"
 

@@ -7,4 +7,4 @@ router = Router()
 
 @router.message(Command("start"))
 async def start_cmd(message: Message):
-    await message.answer("Привет! Выбери команду:", reply_markup=keyboard_main)
+    await message.answer("Привет! Со списком всех команд вы можете ознакомиться по команде /help\nТакже можете посетить тг канал посвященный боту - https://t.me/mycampusdev", reply_markup=keyboard_main)
