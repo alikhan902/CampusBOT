@@ -10,9 +10,11 @@ LOG_FILE = Path("user_actions.json")
 class UserLoggerMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         user_id = None
+        username = None
 
         if isinstance(event, (Message, CallbackQuery)):
             user_id = event.from_user.id
+            username = event.from_user.username or "unknown"
 
         if user_id:
             if LOG_FILE.exists():
@@ -26,6 +28,7 @@ class UserLoggerMiddleware(BaseMiddleware):
 
             logs.append({
                 "user_id": user_id,
+                "username": username,
                 "time": datetime.now().isoformat(sep=' ', timespec='seconds')
             })
 
