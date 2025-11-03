@@ -1,15 +1,16 @@
+from datetime import date
 import time
 import requests
-from datetime import date
+from  .utils import mondays_between
 from django.core.management.base import BaseCommand
 from main.models import AcademicGroup, Lesson, Teacher, Room
 
 class Command(BaseCommand):
-    help = "Fetch schedule for all groups and save to DB"
+    help = "Парсинг расписания"
 
     def handle(self, *args, **options):
         url = "https://ecampus.ncfu.ru/schedule/GetSchedule"
-        target_list = ["2025-11-10T00:00:00.000Z", "2025-11-17T00:00:00.000Z"]
+        target_list = mondays_between(date(2025, 9, 1), date(2025, 12, 29))
         
         for target_date in target_list:
             for group in AcademicGroup.objects.all():

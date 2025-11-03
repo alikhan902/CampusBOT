@@ -45,7 +45,6 @@ async def get_grades(message: Message, state: FSMContext, session):
     all_grades = []
     total_n = 0
     
-    # Считаем общее количество предметов для прогресса
     total_lessons = 0
     for course in courses:
         for year in course.get("AcademicYears", []):
@@ -74,16 +73,11 @@ async def get_grades(message: Message, state: FSMContext, session):
                         for lesson in lesson_types:
                             lesson_id = lesson.get("Id")
                             payload = {"studentId": model_id, "lessonTypeId": lesson_id}
-                            start_time_lesson = time.perf_counter()
-                            grades, success = await post_lesson(
-                                session=session,
-                                payload=payload,
-                                start_time_lesson=start_time_lesson
-                            )
+                            grades, success = await post_lesson(session=session,payload=payload)
 
                             processed_lessons += 1
                             
-                            if processed_lessons % 3 == 0 or processed_lessons == total_lessons:  # Обновляем каждые 3 урока или в конце
+                            if processed_lessons % 3 == 0 or processed_lessons == total_lessons:
                                 progress = (processed_lessons / total_lessons) * 100
                                 await progress_msg.edit_text(
                                     f"🔄 Обрабатываем оценки...\n"

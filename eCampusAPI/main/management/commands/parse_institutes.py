@@ -9,7 +9,7 @@ from main.models import Institute, Specialty, AcademicGroup
 
 
 class Command(BaseCommand):
-    help = "Парсит институты, специальности и группы из ecampus.ncfu.ru/schedule"
+    help = "Парсинг институтов"
 
     def handle(self, *args, **options):
         url = "https://ecampus.ncfu.ru/schedule"
