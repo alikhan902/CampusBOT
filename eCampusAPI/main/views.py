@@ -27,7 +27,7 @@ class ScheduleView(APIView):
         except ValueError:
             return Response({"error": "Неверный формат даты (используй YYYY-MM-DD)"}, status=status.HTTP_400_BAD_REQUEST)
 
-        week_dates = [monday + timedelta(days=i) for i in range(7)]
+        week_dates = [monday + timedelta(days=i) for i in range(14)]
 
         filters = Q(date__in=week_dates)
         if group_name:

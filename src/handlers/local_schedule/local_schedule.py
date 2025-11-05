@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
-from datetime import timedelta
+from datetime import timedelta, datetime
 from states.states import ScheduleForm
 from .utils import get_monday_date
 
@@ -41,6 +41,10 @@ async def schedule_name(message: Message, state: FSMContext, session):
     else:
         await message.answer("❌ Неизвестный тип. Введите: группа / преподаватель / аудитория.")
         return
+    
+    monday_date = get_monday_date()
+    url += f"&date={(str(monday_date))[:10]}"
+    print(url)
 
     await message.answer("📡 Получаю расписание...")
 
@@ -59,10 +63,27 @@ async def schedule_name(message: Message, state: FSMContext, session):
         await message.answer("Расписание не найдено 😕")
         return
 
-    monday_date = get_monday_date()
+    # === Разделяем на 2 недели ===
+    week1 = {}
+    week2 = {}
 
-    text = f"📅 Расписание начиная с {monday_date.strftime('%Y-%m-%d')} (1 неделя)\n\n"
-    day_offset = 0 
+    for lesson in schedule:
+        date_str = lesson.get("date")
+        if not date_str:
+            continue
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        delta_days = (date_obj - monday_date.date()).days
+
+
+        if 0 <= delta_days < 7:
+            week = week1
+        elif 7 <= delta_days < 14:
+            week = week2
+        else:
+            continue
+
+        weekday = lesson.get("weekday", "—")
+        week.setdefault(weekday, []).append(lesson)
 
     weekdays_order = [
         "Понедельник",
@@ -74,40 +95,47 @@ async def schedule_name(message: Message, state: FSMContext, session):
         "Воскресенье",
     ]
 
-    for day in schedule:
-        lessons = day.get("lessons", [])
-        weekday = lessons[0].get("weekday", "-") if lessons else "—"
+    async def render_week(week_data, week_number):
+        text = f"📅 Расписание — {week_number}-я неделя (начало {monday_date + timedelta(days=(week_number - 1) * 7):%Y-%m-%d})\n\n"
 
-        try:
-            day_offset = weekdays_order.index(weekday)
-        except ValueError:
-            day_offset = 0
+        for weekday in weekdays_order:
+            lessons = week_data.get(weekday, [])
+            if lessons:
+                date = lessons[0].get("date", "")
+            else:
+                date = (monday_date + timedelta(days=(week_number - 1) * 7 + weekdays_order.index(weekday))).strftime("%Y-%m-%d")
 
-        day_date = (monday_date + timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            if lessons:
+                text += f"=== {weekday} ({date}) ===\n"
+            else:
+                continue
+            
+            for lesson in lessons:
+                discipline = lesson.get("discipline", "?")
+                lesson_type = lesson.get("lesson_type", "?")
+                time_begin = (lesson.get("time_begin", "?"))[:5]
+                time_end = (lesson.get("time_end", "?"))[:5]
+                teacher = (lesson.get("teacher") or {}).get("Name", "—")
+                room = (lesson.get("room") or {}).get("Name", "—")
+                group = (lesson.get("group") or {}).get("Name", "—")
+                subgroup = lesson.get("subgroup") or ""
 
-        text += f"=== {weekday} ({day_date}) ===\n"
+                text += (
+                    f"⏰ {time_begin}–{time_end}\n"
+                    f"📖 {discipline} ({lesson_type})\n"
+                    f"👨‍🏫 {teacher}\n"
+                    f"🏫 Аудитория: {room}\n"
+                    f"👥 Группа: {group} {subgroup}\n\n"
+                )
+        return text
 
-        if not lessons:
-            text += "  ❌ Нет пар\n\n"
-            continue
+    # Отправляем по неделям
+    if week1:
+        text = await render_week(week1, 1)
+        for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
+            await message.answer(chunk, parse_mode="HTML")
 
-        for lesson in lessons:
-            discipline = lesson.get("discipline", "?")
-            lesson_type = lesson.get("lesson_type", "?")
-            time_begin = (lesson.get("time_begin", "?"))[:5]
-            time_end = (lesson.get("time_end", "?"))[:5]
-            teacher = (lesson.get("teacher") or {}).get("Name", "—")
-            room = (lesson.get("room") or {}).get("Name", "—")
-            group = (lesson.get("group") or {}).get("Name", "—")
-            subgroup = lesson.get("subgroup") or ""
-
-            text += (
-                f"⏰ {time_begin}–{time_end}\n"
-                f"📖 {discipline} ({lesson_type})\n"
-                f"👨‍🏫 {teacher}\n"
-                f"🏫 Аудитория: {room}\n"
-                f"👥 Группа: {group} {subgroup}\n\n"
-            )
-
-    for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
-        await message.answer(chunk, parse_mode="HTML")
+    if week2:
+        text = await render_week(week2, 2)
+        for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
+            await message.answer(chunk, parse_mode="HTML")

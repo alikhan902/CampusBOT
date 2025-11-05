@@ -13,6 +13,7 @@ class Command(BaseCommand):
         target_list = mondays_between(date(2025, 9, 1), date(2025, 12, 29))
         
         for target_date in target_list:
+            self.stdout.write(f"Загрузка расписаний на {target_date}")
             for group in AcademicGroup.objects.all():
                 payload = {
                     "date": target_date,
@@ -77,4 +78,4 @@ class Command(BaseCommand):
                                 "subgroup": subgroup
                             }
                         )
-                self.stdout.write(f"✅ Загружено расписание для {group.Name}")
+                self.stdout.write(f" Загружено расписание для {group.Name}")
