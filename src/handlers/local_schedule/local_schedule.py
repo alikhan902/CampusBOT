@@ -43,8 +43,8 @@ async def schedule_name(message: Message, state: FSMContext, session):
         return
     
     monday_date = get_monday_date()
+    
     url += f"&date={(str(monday_date))[:10]}"
-    print(url)
 
     await message.answer("📡 Получаю расписание...")
 
@@ -63,7 +63,7 @@ async def schedule_name(message: Message, state: FSMContext, session):
         await message.answer("Расписание не найдено 😕")
         return
 
-    # === Разделяем на 2 недели ===
+    # Разделяем на 2 недели
     week1 = {}
     week2 = {}
 
@@ -129,7 +129,6 @@ async def schedule_name(message: Message, state: FSMContext, session):
                 )
         return text
 
-    # Отправляем по неделям
     if week1:
         text = await render_week(week1, 1)
         for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
