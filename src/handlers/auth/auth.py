@@ -111,7 +111,8 @@ async def process_captcha(message: Message, state: FSMContext, session):
 
     new_cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
     await state.update_data(cookies=new_cookies, ecampus_id=model_id)
-
+    async with session.post('http://127.0.0.1:8000/api/BotUser/', data = {'user_id': message.from_user.id, 'ecampus_id': model_id, 'cookies': json.dumps(new_cookies)}):
+        pass
     if model_id is not None:
         await message.answer(f"Вход выполнен ✅")
     else:

@@ -6,7 +6,6 @@ router = routers.SimpleRouter()
 router.register(r'Institute', InstituteAPI)
 
 urlpatterns = [
-    # API
     path('', include(router.urls)),
     path('schedule/', ScheduleView.as_view(), name='schedule'),
 ]
