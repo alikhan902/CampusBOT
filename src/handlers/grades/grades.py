@@ -14,10 +14,12 @@ router = Router()
 # оценки
 @router.message(Command("grades"))
 async def get_grades(message: Message, state: FSMContext, session):
-    start_time = time.perf_counter()
     data = await state.get_data()
     model_id = data.get("ecampus_id")
-
+    cookies = data.get("cookies", {})
+    
+    session.cookie_jar.update_cookies(cookies)
+    
     progress_msg = await message.answer("🔄 Начинаем сбор оценок...")
 
     async with session.get("https://ecampus.ncfu.ru/studies") as resp:
@@ -111,10 +113,6 @@ async def get_grades(message: Message, state: FSMContext, session):
                         all_grades.append(response)
                         total_n += n_count
 
-    end_time = time.perf_counter()
-    elapsed = end_time - start_time
-
-    # Удаляем сообщение о прогрессе
     await progress_msg.delete()
 
     if all_grades:

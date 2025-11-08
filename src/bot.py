@@ -9,13 +9,24 @@ from handlers.local_schedule import local_schedule
 from middleware.auth import AuthMiddleware
 from middleware.session import SessionMiddleware
 from middleware.user_logger import UserLoggerMiddleware
+import redis.asyncio as redis_asyncio
+from aiogram.fsm.storage.redis import RedisStorage
 
 load_dotenv()
+
+redis_pool = redis_asyncio.Redis(
+    host='localhost',   
+    port=6379,          
+    db=0,             
+    decode_responses=True
+)
+
+storage = RedisStorage(redis_pool, state_ttl=None)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=storage)
 
 dp.include_router(help.router)
 dp.include_router(start.router)
