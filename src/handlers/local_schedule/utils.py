@@ -8,5 +8,3 @@ def get_monday_date():
     delta_weeks = (monday - reference_date).days // 7
     monday_pair = reference_date + timedelta(weeks=(delta_weeks // 2) * 2)
     return monday_pair
-
-print(get_monday_date())

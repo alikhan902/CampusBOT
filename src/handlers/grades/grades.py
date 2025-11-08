@@ -2,7 +2,7 @@ import re
 import json
 import time
 from bs4 import BeautifulSoup
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -13,6 +13,7 @@ router = Router()
 
 # оценки
 @router.message(Command("grades"))
+@router.message(F.text == "📊 Статистика" or F.text.lower() == "статистика")
 async def get_grades(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")

@@ -15,6 +15,7 @@ router = Router()
 
 # /login
 @router.message(Command("login"))
+@router.message(F.text == "🔐 Войти" or F.text.lower() == "войти")
 async def login_cmd(message: Message, state: FSMContext,session):
     login_url = "https://ecampus.ncfu.ru/account/login"
 

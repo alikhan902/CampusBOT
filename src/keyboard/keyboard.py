@@ -4,7 +4,7 @@ keyboard_main = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="/login"), KeyboardButton(text="/schedule")],
         [KeyboardButton(text="/grades"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="/locsh")]
+        [KeyboardButton(text="/locsh")]  
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
 )

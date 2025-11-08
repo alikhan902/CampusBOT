@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
@@ -10,6 +10,7 @@ router = Router()
 
 
 @router.message(Command("locsh"))
+@router.message(F.text == "🗓️❓ Расписание по поиску" or F.text.lower() == "расписание по поиску")
 async def schedule_start(message: Message, state: FSMContext):
     await message.answer("Введите тип расписания — группа / преподаватель / аудитория:")
     await state.set_state(ScheduleForm.TypeSchedule)

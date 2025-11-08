@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,6 +9,7 @@ router = Router()
 
 # расписание
 @router.message(Command("schedule"))
+@router.message(F.text == "🗓️ Расписание" or F.text.lower() == "расписание")
 async def get_schedule(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")
