@@ -9,7 +9,6 @@ router = Router()
 
 # расписание
 @router.message(Command("schedule"))
-@router.message(F.text == "🗓️ Расписание" or F.text.lower() == "расписание")
 async def get_schedule(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")
