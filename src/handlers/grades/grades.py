@@ -1,19 +1,17 @@
 import re
-import json
-import time
+import orjson
 from bs4 import BeautifulSoup
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from .utils import post_lesson
+from .utils import iter_current_courses, post_lesson
 
 router = Router()
 
 # оценки
 @router.message(Command("grades"))
-@router.message(F.text == "📊 Статистика" or F.text.lower() == "статистика")
 async def get_grades(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")
@@ -26,18 +24,15 @@ async def get_grades(message: Message, state: FSMContext, session):
     async with session.get("https://ecampus.ncfu.ru/studies") as resp:
         text = await resp.text()
 
-    soup = BeautifulSoup(text, "html.parser")
+    soup = BeautifulSoup(text, "lxml")
     script = soup.find("script", type="text/javascript", string=re.compile("viewModel"))
-    courses = []
 
-    if script:
-        text_script = script.string
-        match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text_script, re.S)
-        if match:
-            json_text = match.group(1)
-            json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
-            data_json = json.loads(json_text)
-            courses = data_json.get("specialities", [])
+    match = re.search(r'var\s+viewModel\s*=\s*(\{.*\});', script.string, re.S)
+    json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', match.group(1)) if match else None
+    
+    data_json = orjson.loads(json_text)
+    
+    courses = data_json.get("specialities", [])
 
     model_text = text
     last = model_text.rfind('"Id"') + 5
@@ -45,82 +40,56 @@ async def get_grades(message: Message, state: FSMContext, session):
     first = model_text.find(',')
     model_id = int(model_text[:first])
 
+    total_lessons = sum(
+        len(course_item.get("LessonTypes", []) or [])
+        for course_item in iter_current_courses(courses)
+    )   
+    
     all_grades = []
     total_n = 0
-    
-    total_lessons = 0
-    for course in courses:
-        for year in course.get("AcademicYears", []):
-            for term in year.get("Terms", []):
-                if term.get("IsCurrent", False):
-                    for course_item in term.get("Courses", []):
-                        lesson_types = course_item.get("LessonTypes", [])
-                        total_lessons += len(lesson_types) if lesson_types else 0
-    
     processed_lessons = 0
+    
+    for course_item in iter_current_courses(courses):
+        lesson_types = course_item.get("LessonTypes", [])
+        if not lesson_types:
+            continue
 
-    for course in courses:
-        for year in course.get("AcademicYears", []):
-            for term in year.get("Terms", []):
-                if term.get("IsCurrent", False):
-                    for course_item in term.get("Courses", []):
-                        lesson_types = course_item.get("LessonTypes", [])
-                        if not lesson_types:
-                            continue
+        total_score = total_attendance = total_lessons_course = n_count = 0
 
-                        total_score = 0
-                        total_attendance = 0
-                        total_lessons_course = 0
-                        n_count = 0
+        for lesson in lesson_types:
+            payload = {"studentId": model_id, "lessonTypeId": lesson["Id"]}
+            grades, success = await post_lesson(session=session, payload=payload)
+            processed_lessons += 1
 
-                        for lesson in lesson_types:
-                            lesson_id = lesson.get("Id")
-                            payload = {"studentId": model_id, "lessonTypeId": lesson_id}
-                            grades, success = await post_lesson(session=session,payload=payload)
+            if processed_lessons % 3 == 0 or processed_lessons == total_lessons:
+                progress = (processed_lessons / total_lessons) * 100
+                await progress_msg.edit_text(
+                    f"🔄 Обрабатываем оценки...\n"
+                    f"📊 Прогресс: {processed_lessons}/{total_lessons} ({progress:.1f}%)"
+                )
 
-                            processed_lessons += 1
-                            
-                            if processed_lessons % 3 == 0 or processed_lessons == total_lessons:
-                                progress = (processed_lessons / total_lessons) * 100
-                                await progress_msg.edit_text(
-                                    f"🔄 Обрабатываем оценки...\n"
-                                    f"📊 Прогресс: {processed_lessons}/{total_lessons} ({progress:.1f}%)"
-                                )
+            if not (success and grades):
+                continue
 
-                            if success and grades:
-                                for grade_info in grades:
-                                    attendance = grade_info.get("Attendance")
-                                    grade_text = grade_info.get("GradeText")
+            for g in grades:
+                att, grade_text = g.get("Attendance"), g.get("GradeText")
+                if att == 1:
+                    total_attendance += 1
+                elif att == 0:
+                    n_count += 1
+                if grade_text:
+                    total_score += {"отлично": 5, "хорошо": 4, "удовлетворительно": 3}.get(grade_text, 0)
+                    total_lessons_course += 1
 
-                                    if attendance == 1:
-                                        total_attendance += 1
-                                    elif attendance == 0:
-                                        n_count += 1
-
-                                    if grade_text:
-                                        total_score += {
-                                            "отлично": 5,
-                                            "хорошо": 4,
-                                            "удовлетворительно": 3
-                                        }.get(grade_text, 0)
-                                        total_lessons_course += 1
-
-                        average_score = total_score / total_lessons_course if total_lessons_course > 0 else 0
-                        response = (
-                            f"📖 {course_item.get('Name')}\n"
-                            f"❌ Н: {n_count}\n"
-                            f"⭐ Средний балл: {average_score:.2f}"
-                        )
-                        all_grades.append(response)
-                        total_n += n_count
-
+        avg = total_score / total_lessons_course if total_lessons_course else 0
+        all_grades.append(f"📖 {course_item['Name']}\n❌ Н: {n_count}\n⭐ Средний балл: {avg:.2f}")
+        total_n += n_count
     await progress_msg.delete()
 
     if all_grades:
         response = "\n\n".join(all_grades)
         response += f"\n\n📊 Общее количество Н: {total_n}"
         
-        # Разбиваем длинные сообщения
         if len(response) > 4096:
             for i in range(0, len(response), 4096):
                 await message.answer(response[i:i+4096])

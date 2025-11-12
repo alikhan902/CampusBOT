@@ -1,8 +1,8 @@
 import asyncio
 import os
 import uuid
-import re
-import json
+import regex as re
+import orjson
 import aiofiles
 from bs4 import BeautifulSoup
 from aiogram import Router, F
@@ -15,7 +15,6 @@ router = Router()
 
 # /login
 @router.message(Command("login"))
-@router.message(F.text == "🔐 Войти" or F.text.lower() == "войти")
 async def login_cmd(message: Message, state: FSMContext,session):
     login_url = "https://ecampus.ncfu.ru/account/login"
 
@@ -25,7 +24,7 @@ async def login_cmd(message: Message, state: FSMContext,session):
     async with session.get(login_url) as resp:
         text = await resp.text()
 
-    soup = BeautifulSoup(text, "html.parser")
+    soup = BeautifulSoup(text, "lxml")
     token_tag = soup.find("input", {"name": "__RequestVerificationToken"})
     captcha_tag = soup.find("img", {"alt": "captcha"})
 
@@ -40,10 +39,8 @@ async def login_cmd(message: Message, state: FSMContext,session):
     filepath = os.path.join("captcha", filename)
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    async with session.get(captcha_url) as captcha_resp:
-        content = await captcha_resp.read()
-        async with aiofiles.open(filepath, "wb") as f:
-            await f.write(content)
+    async with session.get(captcha_url) as resp, aiofiles.open(filepath, "wb") as f:
+        await f.write(await resp.read())
 
     cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
     await state.update_data(
@@ -94,21 +91,17 @@ async def process_captcha(message: Message, state: FSMContext, session):
     async with session.get("https://ecampus.ncfu.ru/schedule/my/student") as get_id:
         html = await get_id.text()
 
-    soup2 = BeautifulSoup(html, "html.parser")
+    soup2 = BeautifulSoup(html, "lxml")
     script = soup2.find("script", type="text/javascript", string=re.compile("viewModel"))
 
     model_id = None
-    if script:
-        text = script.string
-        match = re.search(r"var\s+viewModel\s*=\s*(\{.*\});", text, re.S)
-        if match:
-            json_text = match.group(1)
-            json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', json_text)
-            try:
-                data_json = json.loads(json_text)
-                model_id = data_json["Model"]["Id"]
-            except Exception:
-                model_id = None
+    match = re.search(r'var\s+viewModel\s*=\s*(\{.*\});', script.string, re.S)
+    json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', match.group(1)) if match else None
+    try:
+        data_json = orjson.loads(json_text)
+        model_id = data_json["Model"]["Id"]
+    except Exception:
+        model_id = None
 
     new_cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
     await state.update_data(cookies=new_cookies, ecampus_id=model_id)
