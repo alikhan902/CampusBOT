@@ -6,16 +6,29 @@ import orjson
 import aiofiles
 from bs4 import BeautifulSoup
 from aiogram import Router, F
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from states.states import AuthForm
 from aiogram.filters import Command
 
 router = Router()
 
-# /login
 @router.message(Command("login"))
-async def login_cmd(message: Message, state: FSMContext,session):
+async def login_cmd(message: Message, state: FSMContext, session):
+    await handle_login_message(message, state, session)
+
+@router.callback_query(lambda c: c.data == "login")
+async def login_callback(callback_query: CallbackQuery, state: FSMContext, session):
+    await callback_query.answer()
+    await handle_login_callback(callback_query, state, session)
+
+async def handle_login_message(message: Message, state: FSMContext, session):
+    await perform_login(message, None, state, session)
+
+async def handle_login_callback(callback_query: CallbackQuery, state: FSMContext, session):
+    await perform_login(callback_query.message, callback_query, state, session)
+
+async def perform_login(message: Message, callback_query: CallbackQuery, state: FSMContext, session):
     login_url = "https://ecampus.ncfu.ru/account/login"
 
     await state.clear() 
@@ -76,7 +89,11 @@ async def process_captcha(message: Message, state: FSMContext, session):
     data = await state.get_data()
     token = data["token"]
 
-
+    saved_cookies = data.get("cookies", {})
+    if saved_cookies:
+        for key, value in saved_cookies.items():
+            session.cookie_jar.update_cookies({key: value})
+    
     payload = {
         "__RequestVerificationToken": token,
         "Login": data["login"],
@@ -86,8 +103,12 @@ async def process_captcha(message: Message, state: FSMContext, session):
     }
 
     async with session.post("https://ecampus.ncfu.ru/account/login", data=payload) as resp:
-        await resp.text()
-
+        resp1 = await resp.text()
+        if resp.status != 200:
+            await message.answer(f"❌ Авторизация не удалась (код ошибки {resp.status})\nПроверьте учетные данные и капчу")
+            await state.set_state(None)
+            return
+    
     async with session.get("https://ecampus.ncfu.ru/schedule/my/student") as get_id:
         html = await get_id.text()
 
@@ -95,16 +116,25 @@ async def process_captcha(message: Message, state: FSMContext, session):
     script = soup2.find("script", type="text/javascript", string=re.compile("viewModel"))
 
     model_id = None
-    match = re.search(r'var\s+viewModel\s*=\s*(\{.*\});', script.string, re.S)
-    json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', match.group(1)) if match else None
-    try:
-        data_json = orjson.loads(json_text)
-        model_id = data_json["Model"]["Id"]
-    except Exception:
-        model_id = None
-
+    if script is None:
+        print("[AUTH] ❌ Script with viewModel not found!")
+        await message.answer("❌ Авторизация не удалась - страница расписания не содержит необходимые данные")
+    else:
+        try:
+            match = re.search(r'var\s+viewModel\s*=\s*(\{.*\});', script.string, re.S)
+            if match is None:
+                print("[AUTH] ❌ Regex match failed!")
+                await message.answer("❌ Авторизация не удалась - не удалось найти данные о пользователе")
+            else:
+                json_text = re.sub(r'JSON\.parse\((\".*?\")\)', r'\1', match.group(1))
+                data_json = orjson.loads(json_text)
+                model_id = data_json.get("Model", {}).get("Id")
+        except Exception as e:
+            await message.answer(f"❌ Авторизация не удалась - ошибка: {type(e).__name__}")
+    
     new_cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
     await state.update_data(cookies=new_cookies, ecampus_id=model_id)
+    
     if model_id is not None:
         await message.answer(f"Вход выполнен ✅")
     else:

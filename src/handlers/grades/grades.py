@@ -2,17 +2,27 @@ import re
 import orjson
 from bs4 import BeautifulSoup
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from keyboard.keyboard import keyboard_back_to_main
 
 from .utils import iter_current_courses, post_lesson
 
 router = Router()
 
-# оценки
+# оценки - обработчик для команды (для совместимости)
 @router.message(Command("grades"))
 async def get_grades(message: Message, state: FSMContext, session):
+    await handle_grades(message, state, session)
+
+# оценки - обработчик для inline кнопки
+@router.callback_query(lambda c: c.data == "grades")
+async def grades_callback(callback_query: CallbackQuery, state: FSMContext, session):
+    await callback_query.answer()
+    await handle_grades(callback_query.message, state, session)
+
+async def handle_grades(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")
     cookies = data.get("cookies", {})
@@ -92,8 +102,8 @@ async def get_grades(message: Message, state: FSMContext, session):
         
         if len(response) > 4096:
             for i in range(0, len(response), 4096):
-                await message.answer(response[i:i+4096])
+                await message.answer(response[i:i+4096], reply_markup=keyboard_back_to_main)
         else:
-            await message.answer(response)
+            await message.answer(response, reply_markup=keyboard_back_to_main)
     else:
-        await message.answer("❌ Не удалось получить данные о ваших оценках.")
+        await message.answer("❌ Не удалось получить данные о ваших оценках.", reply_markup=keyboard_back_to_main)

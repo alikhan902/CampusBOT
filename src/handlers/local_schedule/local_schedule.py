@@ -1,27 +1,53 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 from datetime import timedelta, datetime
 from states.states import ScheduleForm
 from .utils import get_monday_date
+from keyboard.keyboard import keyboard_locsh_type, keyboard_back_to_main
 
 router = Router()
 
 
+# /locsh - обработчик для команды (для совместимости)
 @router.message(Command("locsh"))
-@router.message(F.text == "🗓️❓ Расписание по поиску" or F.text.lower() == "расписание по поиску")
 async def schedule_start(message: Message, state: FSMContext):
-    await message.answer("Введите тип расписания — группа / преподаватель / аудитория:")
-    await state.set_state(ScheduleForm.TypeSchedule)
+    await show_schedule_type_menu(message, state)
 
+# locsh - обработчик для inline кнопки
+@router.callback_query(lambda c: c.data == "locsh")
+async def locsh_callback(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await show_schedule_type_menu(callback_query.message, state)
 
-@router.message(ScheduleForm.TypeSchedule)
-async def schedule_type(message: Message, state: FSMContext):
-    await state.update_data(type=message.text.strip().lower())
-    await message.answer("Введите ФИО преподавателя / название группы / аудитории:")
+async def show_schedule_type_menu(message: Message, state: FSMContext):
+    await message.answer(
+        "Выберите тип расписания:",
+        reply_markup=keyboard_locsh_type
+    )
+
+# Обработчики выбора типа расписания
+@router.callback_query(lambda c: c.data == "schedule_group")
+async def schedule_type_group(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.update_data(type="группа")
+    await callback_query.message.edit_text("Введите название группы:")
     await state.set_state(ScheduleForm.NameType)
 
+@router.callback_query(lambda c: c.data == "schedule_teacher")
+async def schedule_type_teacher(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.update_data(type="преподаватель")
+    await callback_query.message.edit_text("Введите ФИО преподавателя:")
+    await state.set_state(ScheduleForm.NameType)
+
+@router.callback_query(lambda c: c.data == "schedule_room")
+async def schedule_type_room(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await state.update_data(type="аудитория")
+    await callback_query.message.edit_text("Введите номер аудитории:")
+    await state.set_state(ScheduleForm.NameType)
 
 @router.message(ScheduleForm.NameType)
 async def schedule_name(message: Message, state: FSMContext, session):
@@ -40,7 +66,7 @@ async def schedule_name(message: Message, state: FSMContext, session):
     elif "ауд" in type_:
         url = f"{base_url}?room={name}"
     else:
-        await message.answer("❌ Неизвестный тип. Введите: группа / преподаватель / аудитория.")
+        await message.answer("❌ Неизвестный тип. Выберите: группа / преподаватель / аудитория.")
         return
     
     monday_date = get_monday_date()
@@ -61,7 +87,7 @@ async def schedule_name(message: Message, state: FSMContext, session):
             return
 
     if not schedule:
-        await message.answer("Расписание не найдено 😕")
+        await message.answer("Расписание не найдено 😕", reply_markup=keyboard_back_to_main)
         return
 
     # Разделяем на 2 недели
@@ -139,3 +165,5 @@ async def schedule_name(message: Message, state: FSMContext, session):
         text = await render_week(week2, 2)
         for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
             await message.answer(chunk, parse_mode="HTML")
+
+    await message.answer("Выберите действие:", reply_markup=keyboard_back_to_main)

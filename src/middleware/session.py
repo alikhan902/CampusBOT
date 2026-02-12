@@ -1,5 +1,6 @@
 from aiogram import BaseMiddleware
-from aiohttp import ClientSession, CookieJar
+from aiogram.types import Message, CallbackQuery
+from aiohttp import ClientSession
 
 class SessionMiddleware(BaseMiddleware):
     def __init__(self):
@@ -7,12 +8,18 @@ class SessionMiddleware(BaseMiddleware):
         self.sessions = {}
 
     async def __call__(self, handler, event, data):
-        user_id = event.from_user.id
+        if isinstance(event, Message):
+            user_id = event.from_user.id
+        elif isinstance(event, CallbackQuery):
+            user_id = event.from_user.id
+        else:
+            user_id = None
 
-        if user_id not in self.sessions:
-            self.sessions[user_id] = ClientSession(cookie_jar=CookieJar())
+        if user_id is not None:
+            if user_id not in self.sessions:
+                self.sessions[user_id] = ClientSession()
 
-        data["session"] = self.sessions[user_id]
+            data["session"] = self.sessions[user_id]
 
         result = await handler(event, data)
         return result

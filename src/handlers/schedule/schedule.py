@@ -1,15 +1,25 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from .utils import get_monday_date
+from keyboard.keyboard import keyboard_back_to_main
 
 router = Router()
 
 
-# расписание
+# расписание - обработчик для команды (для совместимости)
 @router.message(Command("schedule"))
 async def get_schedule(message: Message, state: FSMContext, session):
+    await handle_schedule(message, state, session)
+
+# расписание - обработчик для inline кнопки
+@router.callback_query(lambda c: c.data == "schedule")
+async def schedule_callback(callback_query: CallbackQuery, state: FSMContext, session):
+    await callback_query.answer()
+    await handle_schedule(callback_query.message, state, session)
+
+async def handle_schedule(message: Message, state: FSMContext, session):
     data = await state.get_data()
     model_id = data.get("ecampus_id")
 
@@ -57,4 +67,4 @@ async def get_schedule(message: Message, state: FSMContext, session):
             )
 
     for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
-        await message.answer(chunk)
+        await message.answer(chunk, reply_markup=keyboard_back_to_main)

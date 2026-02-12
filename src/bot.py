@@ -25,7 +25,7 @@ storage = RedisStorage(redis_pool, state_ttl=None)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=TOKEN, connect_timeout=30.0, timeout=30.0)
 dp = Dispatcher(storage=storage)
 
 dp.include_router(help.router)
@@ -39,3 +39,4 @@ dp.message.middleware(AuthMiddleware())
 dp.message.middleware(SessionMiddleware())
 dp.message.middleware(UserLoggerMiddleware())
 dp.callback_query.middleware(UserLoggerMiddleware())
+dp.callback_query.middleware(SessionMiddleware())
