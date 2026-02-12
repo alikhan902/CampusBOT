@@ -10,12 +10,10 @@ from keyboard.keyboard import keyboard_locsh_type, keyboard_back_to_main
 router = Router()
 
 
-# /locsh - обработчик для команды (для совместимости)
 @router.message(Command("locsh"))
 async def schedule_start(message: Message, state: FSMContext):
     await show_schedule_type_menu(message, state)
 
-# locsh - обработчик для inline кнопки
 @router.callback_query(lambda c: c.data == "locsh")
 async def locsh_callback(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
@@ -27,7 +25,6 @@ async def show_schedule_type_menu(message: Message, state: FSMContext):
         reply_markup=keyboard_locsh_type
     )
 
-# Обработчики выбора типа расписания
 @router.callback_query(lambda c: c.data == "schedule_group")
 async def schedule_type_group(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
@@ -90,7 +87,6 @@ async def schedule_name(message: Message, state: FSMContext, session):
         await message.answer("Расписание не найдено 😕", reply_markup=keyboard_back_to_main)
         return
 
-    # Разделяем на 2 недели
     week1 = {}
     week2 = {}
 

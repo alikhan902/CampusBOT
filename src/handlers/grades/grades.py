@@ -11,12 +11,10 @@ from .utils import iter_current_courses, post_lesson
 
 router = Router()
 
-# оценки - обработчик для команды (для совместимости)
 @router.message(Command("grades"))
 async def get_grades(message: Message, state: FSMContext, session):
     await handle_grades(message, state, session)
 
-# оценки - обработчик для inline кнопки
 @router.callback_query(lambda c: c.data == "grades")
 async def grades_callback(callback_query: CallbackQuery, state: FSMContext, session):
     await callback_query.answer()

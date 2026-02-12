@@ -13,7 +13,7 @@ async def help_cmd(message: Message):
         "<b>📅 Расписание</b> - расписание на эту неделю\n"
         "<b>⭐ Оценки</b> - оценки и Н-ки\n"
         "<b>🔍 Поиск расписания</b> - получение расписания по названию (работает при проблемах с eCampus)\n\n"
-        "💬 Посетите наш канал - https://t.me/mycampusdev"
+        "💬 Телеграмм канал по боту - https://t.me/mycampusdev"
     )
     await message.answer(help_text, parse_mode="HTML", reply_markup=keyboard_back_to_main)
 
@@ -25,7 +25,7 @@ async def help_callback(callback_query: CallbackQuery):
         "<b>📅 Расписание</b> - расписание на эту неделю\n"
         "<b>⭐ Оценки</b> - оценки и Н-ки\n"
         "<b>🔍 Поиск расписания</b> - получение расписания по названию (работает при проблемах с eCampus)\n\n"
-        "💬 Посетите наш канал - https://t.me/mycampusdev"
+        "💬 Телеграмм канал по боту - https://t.me/mycampusdev"
     )
     await callback_query.message.edit_text(help_text, parse_mode="HTML", reply_markup=keyboard_back_to_main)
     await callback_query.answer()
